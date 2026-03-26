@@ -11,55 +11,49 @@ permissions:
   id-token: write # Required for OIDC Provenance
 
 jobs:
-  # Parallel Validation Jobs
-  lint:
+  # Requirement: execute npm run lint, test, and build in parallel
+  validate:
+    name: Validate (${{ matrix.task }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [lint, test, build, typecheck]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build
+      - name: Run ${{ matrix.task }}
+        run: npm run ${{ matrix.task }}
 
-  # Sequential Publish Job
+  # Requirement: Implement semantic-release and secure NPM_TOKEN with OIDC
   publish:
-    needs: [lint, test, build]
+    name: Semantic Release & Publish
+    needs: validate
     runs-on: ubuntu-latest
+    # Only run on main branch pushes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Semantic Release
+      - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
